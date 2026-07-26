@@ -70,6 +70,44 @@ are driven by BlueStacks and the game:
    shortcut to the script there
 6. In BlueStacks, open the game, press `` ` `` and move the mouse
 
+## Included BlueStacks control config
+
+`config/com.momend.mechwars.cfg` is a ready-made Mech Wars control scheme
+file with two schemes:
+
+**`MechWars`** (selected) — key bindings only, no Pan/EdgeScroll controls,
+exactly the clean base this tool wants. Coordinates are screen percentages,
+so they scale with the instance resolution (built on 1920×1080 against the
+default Mech Wars HUD):
+
+| Key | Taps HUD position (x%, y%) |
+|---|---|
+| `1` / `2` / `3` | 96.5, 40 / 51 / 61.5 — right-edge column |
+| `Right mouse` | 81.6, 89.9 |
+| `E` | 72.5, 57.7 |
+| `Q` | 66.5, 69.5 |
+| `F` | 66.6, 87.2 |
+| `Space` | 81.6, 74.9 |
+| `Shift` | 74.5, 91.8 |
+| `Tab` | 81.2, 61.3 |
+
+**`MechWars - Script Pan`** (fallback) — the same bindings plus two
+BlueStacks Script controls: **hold `Z` to pan left, `X` to pan right**, via
+looped fixed-coordinate swipes. Coarser than the AHK helper, but needs
+nothing installed on the host — useful if you can't run AutoHotkey.
+
+### Installing the config
+
+1. **Close BlueStacks completely first** — it rewrites this file from memory
+   on exit and will silently overwrite your copy otherwise.
+2. Find your BlueStacks data directory (registry key
+   `HKLM\SOFTWARE\BlueStacks_nxt` → `UserDefinedDir`, e.g. `D:\BlueStacks_nxt`).
+3. Copy the file to
+   `<data dir>\Engine\UserData\InputMapper\UserFiles\com.momend.mechwars.cfg`
+   (back up the existing one if you have custom bindings).
+4. Start BlueStacks — the `MechWars` scheme will be active; switch schemes
+   any time from the in-game controls menu.
+
 ## Recommendations for optimal gameplay
 
 - **Turn ON the game's auto-fire.** Pan mode holds the left mouse button for
@@ -80,9 +118,9 @@ are driven by BlueStacks and the game:
   means the resets happen far less often per degree turned — the single
   biggest smoothness multiplier available, confirmed by testing.
 - **Use a plain BlueStacks control scheme** — just your tap/key bindings.
-  Remove any Pan / Edge-scroll controls from the active scheme, and never
-  enable BlueStacks' shooting mode (F1) while this tool is active: its touch
-  injection fights the script's drag on the same touch pipeline.
+  The included `config/com.momend.mechwars.cfg` is exactly that (see above).
+  Never enable BlueStacks' shooting mode (F1) while this tool is active: its
+  touch injection fights the script's drag on the same touch pipeline.
 - Keep BlueStacks **windowed at a consistent size**. The script re-measures
   the window every time you toggle pan mode, so resizing is fine — just
   toggle off/on afterwards.
