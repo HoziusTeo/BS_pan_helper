@@ -149,6 +149,8 @@ default Mech Wars HUD):
 | `Space` | 81.6, 74.9 |
 | `Shift` | 74.5, 91.8 |
 | `Tab` | 81.2, 61.3 |
+| `R` | 50.1, 60.0 |
+| `F1` | 90.8, 6.3 |
 
 **`MechWars - Script Pan`** (fallback) — the same bindings plus two
 BlueStacks Script controls: **hold `Z` to pan left, `X` to pan right**, via
