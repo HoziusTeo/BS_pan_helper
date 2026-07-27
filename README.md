@@ -147,6 +147,7 @@ enters the joystick zone and every warp target lands on empty screen.
 | Symptom | Fix |
 |---|---|
 | Cursor invisible after a crash | `Ctrl+Alt+R`, or restart the script |
+| Cursor still visible during pan mode | Disable BlueStacks' **custom mouse cursor** setting (Settings → Preferences). The script blanks the shared Windows system cursors; BlueStacks' custom cursor is a private app cursor and bypasses that mechanism |
 | Camera jumps violently at reset points | `RESET_PAUSE_MS := 5` |
 | `` ` `` does nothing | BlueStacks must be the foreground window; check the status box exists at all (if not, the AV ate the script — see Setup step 3) |
 | Mech walks while panning | Your travel band overlaps the joystick zone — raise `TRAVEL_X_MIN` |
