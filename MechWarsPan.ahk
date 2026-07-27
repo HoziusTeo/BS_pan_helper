@@ -1,6 +1,7 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 CoordMode "Mouse", "Screen"
+CoordMode "Pixel", "Screen"
 
 ; =============================================================================
 ;  Mech Wars pan helper  -  v4 "seamless"
@@ -91,6 +92,23 @@ global WARP_EXIT_B := [57.0, 30.0]   ; exited bottom-> respawn high
 ; runway, so the first left flick after any pause reset almost immediately.
 global WARP_NEUTRAL := [70.0, 30.0]
 
+; --- auto pan: engage/disengage with the battle HUD ---------------------
+global AUTO_PAN     := true      ; auto-toggle pan when a battle starts/ends
+global AUTO_POLL_MS := 400
+; Battle-only HUD pixels (percent of client area, expected 0xRRGGBB).
+; Anchored to LOADOUT-INDEPENDENT UI: the chat bubble and the minimap player
+; arrow (always centred on the minimap). The first calibration used the
+; weapon-slot column, whose icons change with the equipped mech - it broke
+; the moment the loadout changed. These two matched across 10 battle frames
+; spanning four battles and two loadouts, and neither appears on any menu,
+; robot-select or fail screen. Both stay visible under the scoreboard (pan
+; stays on) and are covered by the in-battle settings menu (pan yields the
+; cursor). BOTH must match. Assumes the game area fills the client area
+; (fullscreen / no BlueStacks sidebar) - recalibrate if playing windowed.
+global AUTO_POINTS := [[97.20, 94.07, 0xCBEBFF]   ; chat bubble icon
+                     , [ 7.81, 14.81, 0xFDE90A]]  ; minimap player arrow
+global AUTO_TOL := 45            ; per-channel colour tolerance (scaling drift)
+
 global POLL_MS      := 5
 global HIDE_CURSOR  := true
 global SHOW_OVERLAY := false     ; travel boundary - tuning aid only
@@ -104,6 +122,8 @@ global TLX:=0, TRX:=0, TTY:=0, TBY:=0            ; travel bounds, px
 global WLX:=0, WRX:=0, WTY:=0, WBY:=0            ; warp corridor, px
 global WCX:=0, WCY:=0                            ; corridor centre, px
 global WinX:=0, WinY:=0, WinW:=0, WinH:=0        ; client rect, px
+global BattleStreak:=0, MenuStreak:=0            ; auto-pan detection state
+global AutoStarted:=false, ManualOff:=false
 global LastMX:=0, LastMY:=0, LastMoveTick:=0, IdleDone:=false
 global VelX:=0, VelY:=0
 global CarryX:=0.0, CarryY:=0.0                  ; motion owed to the camera
@@ -132,6 +152,9 @@ global StatusTxt := StatusGui.Add("Text", "w230 Center", "starting")
 StatusGui.Show("x10 y10 w230 h26 NoActivate")
 SetStatus("READY - " TOGGLE_KEY " toggles", "202020")
 
+if AUTO_PAN
+    SetTimer AutoTick, AUTO_POLL_MS
+
 SetStatus(msg, colour) {
     global StatusGui, StatusTxt
     StatusGui.BackColor := colour
@@ -139,11 +162,66 @@ SetStatus(msg, colour) {
 }
 
 TogglePan() {
-    global Active
-    if Active
+    global
+    if Active {
+        ; Manual stop during a detected battle means "leave me alone until
+        ; this battle ends" - the auto-engager respects it.
+        ManualOff := (BattleStreak > 0)
+        AutoStarted := false
         StopPan()
-    else
+    } else {
+        ManualOff := false
+        AutoStarted := false
         StartPan()
+    }
+}
+
+; ---- battle detection: sample battle-only HUD pixels, vote 2-of-3 ----------
+AutoTick() {
+    global
+    if (!AUTO_PAN || Resetting)
+        return
+    if !WinActive(BS_EXE) {
+        BattleStreak := 0
+        return
+    }
+    if !ComputeRect()
+        return
+    hits := 0
+    for p in AUTO_POINTS {
+        try {
+            c := PixelGetColor(Round(WinX + WinW * p[1] / 100)
+                             , Round(WinY + WinH * p[2] / 100))
+            if ColorNear(c, p[3], AUTO_TOL)
+                hits++
+        }
+    }
+    if (hits >= 2) {
+        BattleStreak++
+        MenuStreak := 0
+    } else {
+        MenuStreak++
+        BattleStreak := 0
+    }
+    ; act only on state TRANSITIONS (streak exactly 2 = debounced edge)
+    if (BattleStreak = 2 && !Active && !ManualOff) {
+        StartPan()
+        AutoStarted := Active
+        if Active
+            SetStatus("PAN ON (auto) - " TOGGLE_KEY " to stop", "006600")
+    } else if (MenuStreak = 2) {
+        ManualOff := false
+        if (Active && AutoStarted) {
+            AutoStarted := false
+            StopPan()
+        }
+    }
+}
+
+ColorNear(c, ref, tol) {
+    return Abs((c >> 16 & 0xFF) - (ref >> 16 & 0xFF)) <= tol
+        && Abs((c >> 8 & 0xFF) - (ref >> 8 & 0xFF)) <= tol
+        && Abs((c & 0xFF) - (ref & 0xFF)) <= tol
 }
 
 ; Recompute everything in screen px at every activation, so moving/resizing

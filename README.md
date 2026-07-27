@@ -58,6 +58,36 @@ Shift Tab`, right-click) plus `F11` (BlueStacks fullscreen) and `F1`
 (BlueStacks shooting mode) — the script won't warn about conflicts, it will
 just fire both actions at once.
 
+## Automatic battle detection
+
+With `AUTO_PAN := true` (the default), the script detects battle state by
+sampling two battle-only HUD pixels every 400 ms and toggles pan for you:
+
+- **Spawn into battle** → pan engages within ~1 s (`PAN ON (auto)`)
+- **Die / finish / return to menus** → pan releases, cursor comes back for
+  the UI
+- **Open the in-battle settings menu** → pan yields the cursor; re-engages
+  when you close it
+- **Scoreboard** → pan stays on (the HUD anchors remain visible)
+- **Manual override always wins**: toggling pan off mid-battle keeps it off
+  for that battle; a manually started session is never auto-stopped
+
+Detection is a 2-of-2 colour match with debounce (two consecutive polls),
+anchored to **loadout-independent** UI — the chat bubble and the minimap
+player arrow. Do not anchor to weapon/consumable slot icons: they change
+with the equipped mech (that mistake was made and paid for during
+development).
+
+Caveats:
+
+- Calibrated for **fullscreen** (game area = window client area). Playing
+  windowed with the BlueStacks sidebar shifts the corner percentages —
+  re-measure `AUTO_POINTS` if you do.
+- For another game (or after a HUD redesign), recalibrate: take screenshots
+  in and out of battle, find two pixels that are stable across battles and
+  absent in menus, and put their percent coordinates + colours in
+  `AUTO_POINTS`. Set `AUTO_PAN := false` to disable the feature entirely.
+
 ## Minimum system requirements
 
 The script itself is essentially free (≈0.5 % CPU, <10 MB RAM). Requirements
@@ -180,6 +210,7 @@ enters the joystick zone and every warp target lands on empty screen.
 | Camera jumps violently at reset points | `RESET_PAUSE_MS := 5` |
 | `` ` `` does nothing | BlueStacks must be the foreground window; check the status box exists at all (if not, the AV ate the script — see Setup step 3) |
 | Mech walks while panning | Your travel band overlaps the joystick zone — raise `TRAVEL_X_MIN` |
+| Auto-pan never engages | You're windowed (sidebar shifts the sample points), or the HUD moved — recalibrate `AUTO_POINTS`, or set `AUTO_PAN := false` and use the manual toggle |
 
 ## License
 
