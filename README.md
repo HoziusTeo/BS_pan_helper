@@ -29,6 +29,35 @@ feels smoother than the native control.
 
 A small status box in the top-left corner shows `READY` / `PAN ON` / `PAN OFF`.
 
+### Changing the hotkeys
+
+All three hotkeys are plain strings in the CONFIG block at the top of
+`MechWarsPan.ahk` — edit with any text editor, save, and double-click the
+script to reload (`#SingleInstance Force` replaces the running copy):
+
+```ahk
+global TOGGLE_KEY     := "``"    ; pan toggle
+global PANIC_KEY      := "^!p"   ; Ctrl+Alt+P
+global CURSOR_FIX_KEY := "^!r"   ; Ctrl+Alt+R
+```
+
+| You want | Write | Note |
+|---|---|---|
+| Backtick | `"``"` | doubled — `` ` `` is AHK's escape character |
+| CapsLock | `"CapsLock"` | toggles the Caps state as a side effect |
+| Mouse thumb buttons | `"XButton1"` / `"XButton2"` | best feel — hand never leaves the mouse |
+| Middle mouse | `"MButton"` | |
+| Function keys / letters | `"F2"`, `"V"`, ... | |
+
+Modifier prefixes for the panic/cursor keys: `^` Ctrl, `!` Alt, `+` Shift,
+`#` Win — so `"^!p"` means Ctrl+Alt+P. Full key-name reference:
+[AutoHotkey v2 key list](https://www.autohotkey.com/docs/v2/KeyList.htm).
+
+**Avoid keys your game scheme already binds** (here: `1 2 3 E Q F Space
+Shift Tab`, right-click) plus `F11` (BlueStacks fullscreen) and `F1`
+(BlueStacks shooting mode) — the script won't warn about conflicts, it will
+just fire both actions at once.
+
 ## Minimum system requirements
 
 The script itself is essentially free (≈0.5 % CPU, <10 MB RAM). Requirements
