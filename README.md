@@ -24,6 +24,7 @@ feels smoother than the native control.
 | Key | Action |
 |---|---|
 | `` ` `` (backtick) | Toggle pan mode — cursor hides, mouse steers the camera |
+| Hold left-click | Fire (pan mode only, this branch — see below) |
 | `Ctrl+Alt+P` | Panic: release the button, restore the cursor, exit |
 | `Ctrl+Alt+R` | Force-restore the system cursor if it ever sticks |
 
@@ -57,6 +58,32 @@ Modifier prefixes for the panic/cursor keys: `^` Ctrl, `!` Alt, `+` Shift,
 Shift Tab`, right-click) plus `F11` (BlueStacks fullscreen) and `F1`
 (BlueStacks shooting mode) — the script won't warn about conflicts, it will
 just fire both actions at once.
+
+## Fire on mouse button (this branch)
+
+With `FIRE_ENABLED := true`, holding `FIRE_BUTTON` (default `LButton`)
+during pan mode holds the game's fire key (`FIRE_SEND_KEY`, default
+`Space`) — hold left-click to fire, release to stop, like a normal shooter.
+Works even though the left button also drives the camera drag: the hotkey
+hook only sees PHYSICAL presses, so the script's synthetic held-button is
+unaffected and your press/release is converted to the fire key instead.
+
+Design notes, learned the hard way:
+
+- **Resets are the hazard, not proximity.** While BlueStacks holds extra
+  contacts (fire touch, WASD D-pad, ability taps), every camera-touch reset
+  risks reshuffling pointer identities inside the game — that is the
+  "camera freezes while firing" bug. So while firing: no optional resets
+  near key transitions (300 ms quiet window on every mapped key), full
+  travel runway (fewest possible forced resets), and a 3 ms touch gap
+  (smallest possible identity-theft window).
+- **Trigger-pull re-stack:** pressing fire briefly re-stacks the contacts
+  (fire lands first, camera second) so bursts start from a canonical order.
+- **Known residual:** a forced left-boundary reset landing inside a key
+  transition can still occasionally stick the camera. Recovery gesture:
+  **release and re-tap fire** — the re-stack un-sticks it instantly.
+  If the residual bothers you, `FIRE_ENABLED := false` + the game's
+  auto-fire is the zero-hiccup alternative (main branch default).
 
 ## Automatic battle detection
 

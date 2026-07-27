@@ -92,6 +92,59 @@ global WARP_EXIT_B := [57.0, 30.0]   ; exited bottom-> respawn high
 ; runway, so the first left flick after any pause reset almost immediately.
 global WARP_NEUTRAL := [70.0, 30.0]
 
+; --- fire on mouse button -----------------------------------------------
+; Hold FIRE_BUTTON during pan mode = hold the game's fire key (like a
+; normal shooter). Works even for LButton: the hotkey hook only catches
+; PHYSICAL presses, so the script's own synthetic held-LButton that drives
+; the camera drag is unaffected, and your physical press/release is
+; swallowed before it can disturb the drag.
+; While the fire touch is down, BlueStacks holds a second contact on the
+; fire button at ~(81.6, 74.9). Protocol A matches touches by POSITION, so
+; if the camera drag wanders near it the two contacts can swap identities -
+; that is the "camera stops while firing" bug. Fix: while firing, the
+; camera's travel band and warp targets keep >=11% horizontal distance
+; from the fire button at all times.
+global FIRE_ENABLED      := true
+global FIRE_BUTTON       := "LButton"    ; "LButton" or "RButton"
+global FIRE_SEND_KEY     := "Space"      ; key BlueStacks maps to the fire tap
+; While firing, the camera drag lives in the UPPER band (y <= 55%): full
+; horizontal runway, and >=20% vertical separation from the fire touch at
+; (81.6, 74.9) no matter where x is. (The first attempt capped X instead -
+; that gave only 11% separation AND shrank leftward runway to 16%, causing
+; more resets exactly while firing.)
+global FIRE_TRAVEL_Y_MAX := 55.0
+global FIRE_WARP_EXIT_L  := [88.0, 22.0]
+global FIRE_WARP_EXIT_R  := [54.0, 22.0]
+global FIRE_WARP_EXIT_T  := [57.0, 46.0]
+global FIRE_WARP_EXIT_B  := [57.0, 22.0]
+global FIRE_WARP_NEUTRAL := [70.0, 26.0]
+; Re-stack contacts at trigger pull: lift camera, land fire FIRST, re-touch
+; camera SECOND. Camera resets during the burst then never reorder the
+; contacts - many mobile games mis-handle pointer reordering mid-gesture,
+; which showed up as "sometimes freezes at a reset while firing".
+global FIRE_ORDER_FIX    := true
+; Keep the reset gap SHORT while other touches are held: the residual stick
+; is a newborn tap contact stealing the camera's pointer identity during
+; the release->re-press gap, so every millisecond of gap is attack surface.
+; (An earlier 14 ms value tested a BlueStacks-timing theory - disproven.)
+global FIRE_RESET_PAUSE_MS := 3
+; DISABLED after the repro was found (fire held -> WASD/keys join -> stuck):
+; the freeze fires AT camera resets that happen while other contacts are
+; held - identity reshuffle in the pointer roster. Forced periodic resets
+; (this heartbeat) were adding stuck-lottery draws, not healing them.
+global FIRE_HEARTBEAT_MS := 0
+; Combat band likewise retired: proximity was never the mechanism (X-cap
+; and Y-band both failed to fix it), and a tighter band = more resets =
+; more reshuffle opportunities. Full runway while firing = fewest resets.
+global FIRE_BAND := false
+; The real mitigation: never do an OPTIONAL reset near a key transition.
+; Tap/D-pad touches are born and die when these keys change state; a camera
+; reset colliding with that window is when identities get scrambled.
+; Boundary resets still run (unavoidable), but idle/slow resets hold off.
+global TAP_KEYS := ["1","2","3","e","q","f","r","Tab","Shift"
+                  , "w","a","s","d"]
+global TAP_QUIET_MS := 300
+
 ; --- auto pan: engage/disengage with the battle HUD ---------------------
 global AUTO_PAN     := true      ; auto-toggle pan when a battle starts/ends
 global AUTO_POLL_MS := 400
@@ -124,6 +177,10 @@ global WCX:=0, WCY:=0                            ; corridor centre, px
 global WinX:=0, WinY:=0, WinW:=0, WinH:=0        ; client rect, px
 global BattleStreak:=0, MenuStreak:=0            ; auto-pan detection state
 global AutoStarted:=false, ManualOff:=false
+global FireHeld:=false                           ; fire button currently held
+global TFY:=0                                    ; combat TRAVEL_Y_MAX, px
+global LastResetTick:=0, MovedSinceReset:=0      ; fire-heartbeat state
+global TapSig:="", TapQuietUntil:=0              ; key-transition quiet window
 global LastMX:=0, LastMY:=0, LastMoveTick:=0, IdleDone:=false
 global VelX:=0, VelY:=0
 global CarryX:=0.0, CarryY:=0.0                  ; motion owed to the camera
@@ -143,6 +200,54 @@ InstallMouseHook()
 Hotkey TOGGLE_KEY, (*) => TogglePan()
 Hotkey PANIC_KEY, (*) => (StopPan(), RestoreSystemCursor(), ExitApp())
 Hotkey CURSOR_FIX_KEY, (*) => (RestoreSystemCursor(), SetStatus("cursor restored", "202020"))
+
+; Mouse button -> fire, only while pan mode is active. Suppresses the
+; physical button (so BlueStacks' own mapping for it cannot double-act, and
+; a physical LButton release cannot lift the synthetic camera drag) and
+; holds the game's fire key instead. Outside pan mode the button is normal.
+if FIRE_ENABLED {
+    HotIf (*) => Active
+    Hotkey "*" FIRE_BUTTON, (*) => FireDown()
+    Hotkey "*" FIRE_BUTTON " Up", (*) => FireUp()
+    HotIf
+}
+
+FireDown() {
+    global
+    if FireHeld
+        return
+    FireHeld := true
+    if (FIRE_ORDER_FIX && Active) {
+        ; Re-stack: camera up -> fire touch lands FIRST -> camera re-touches
+        ; SECOND, inside the combat band. Later camera resets then never
+        ; reorder the two contacts mid-burst.
+        Resetting := true
+        try {
+            SendInput "{LButton up}"
+            Sleep 8
+            SendInput "{" FIRE_SEND_KEY " down}"
+            Sleep 30
+            nx := WinX + WinW * FIRE_WARP_NEUTRAL[1] / 100
+            ny := WinY + WinH * FIRE_WARP_NEUTRAL[2] / 100
+            DllCall("SetCursorPos", "int", Round(nx), "int", Round(ny))
+            SendInput "{LButton down}"
+            LastMX := nx, LastMY := ny
+            LastResetTick := A_TickCount, MovedSinceReset := 0
+        } finally {
+            Resetting := false
+        }
+    } else {
+        SendInput "{" FIRE_SEND_KEY " down}"
+    }
+}
+
+FireUp() {
+    global FireHeld
+    if !FireHeld
+        return
+    FireHeld := false
+    SendInput "{" FIRE_SEND_KEY " up}"
+}
 
 ; On-screen status (TrayTip is silently suppressed by Focus Assist).
 global StatusGui := Gui("+AlwaysOnTop -Caption +ToolWindow +E0x20")
@@ -234,6 +339,7 @@ ComputeRect() {
     if (cw <= 0 || ch <= 0)
         return false
     WinX := cx, WinY := cy, WinW := cw, WinH := ch
+    TFY := cy + ch * FIRE_TRAVEL_Y_MAX / 100
     TLX := cx + cw * TRAVEL_X_MIN / 100
     TRX := cx + cw * TRAVEL_X_MAX / 100
     TTY := cy + ch * TRAVEL_Y_MIN / 100
@@ -260,6 +366,7 @@ StartPan() {
     DllCall("SetCursorPos", "int", Round(WCX), "int", Round(WCY))
     LastMX := WCX, LastMY := WCY
     LastMoveTick := A_TickCount, IdleDone := false
+    LastResetTick := A_TickCount, MovedSinceReset := 0
     SendInput "{LButton down}"
     if HIDE_CURSOR
         HideSystemCursor()
@@ -270,11 +377,15 @@ StartPan() {
 }
 
 StopPan() {
-    global Active
+    global Active, FireHeld
     if !Active
         return
     SetTimer Tick, 0
     SendInput "{LButton up}"          ; never leave the button stuck down
+    if FireHeld {                     ; nor the fire key
+        SendInput "{" FIRE_SEND_KEY " up}"
+        FireHeld := false
+    }
     Active := false
     RestoreSystemCursor()
     HideOverlay()
@@ -290,6 +401,14 @@ Tick() {
         StopPan()
         return
     }
+    ; Watchdog: SendInput briefly removes AHK's hooks while sending, so a
+    ; physical trigger release can slip through mid-reset and lift the
+    ; camera drag. If the logical button is ever up while pan is on,
+    ; re-press within one poll - any lifted drag self-heals in milliseconds.
+    if !GetKeyState("LButton") {
+        SendInput "{LButton down}"
+        return
+    }
     MouseGetPos(&mx, &my)
     if (mx != LastMX || my != LastMY) {
         ; EMA-filtered velocity: single-poll deltas are noisy, and this feeds
@@ -297,6 +416,7 @@ Tick() {
         ; input itself, so aiming stays direct.
         VelX := VelX * 0.7 + (mx - LastMX) * 0.3
         VelY := VelY * 0.7 + (my - LastMY) * 0.3
+        MovedSinceReset += Abs(mx - LastMX) + Abs(my - LastMY)
         LastMoveTick := A_TickCount
         IdleDone := false
     }
@@ -306,24 +426,66 @@ Tick() {
     ; Fixed safe warp points per exit direction. Never derive the warp Y from
     ; the current Y: a preserved-Y warp to x=80 could land on the Shift button
     ; at (81.8, 61.6) and fire it.
+    ; While ANY held tap-touch is down (fire key, or a physically held RMB
+    ; feeding BlueStacks' own tap), confine the drag to the upper band and
+    ; use combat warp targets - the camera contact stays >=20% away from
+    ; the held touch at all times.
+    fireActive := FireHeld || GetKeyState(FIRE_SEND_KEY, "P")
+               || GetKeyState("RButton", "P")
+
+    ; Key-transition tracker: any tap/D-pad key changing state means a
+    ; BlueStacks contact is being born or dying - hold off on optional
+    ; resets so the camera's identity is never reshuffled mid-transition.
+    sig := ""
+    for k in TAP_KEYS
+        sig .= GetKeyState(k, "P") ? "1" : "0"
+    if (sig != TapSig) {
+        TapSig := sig
+        TapQuietUntil := A_TickCount + TAP_QUIET_MS
+    }
+    quiet := (A_TickCount < TapQuietUntil)
+
     exitL := mx < TLX,  exitR := mx > TRX
-    exitT := my < TTY,  exitB := my > TBY
+    exitT := my < TTY,  exitB := my > ((fireActive && FIRE_BAND) ? TFY : TBY)
     if (exitL || exitR || exitT || exitB) {
-        wp := exitL ? WARP_EXIT_L : exitR ? WARP_EXIT_R
-            : exitT ? WARP_EXIT_T : WARP_EXIT_B
+        ; Defer even boundary resets inside a key-transition quiet window -
+        ; the boundary is our own trigger, not a wall, so letting the drag
+        ; run a little long for <=300 ms is free. Exception: the LEFT
+        ; boundary resets immediately (beyond it lies the joystick zone).
+        if (quiet && !exitL)
+            return
+        if (fireActive && FIRE_BAND)
+            wp := exitL ? FIRE_WARP_EXIT_L : exitR ? FIRE_WARP_EXIT_R
+                : exitT ? FIRE_WARP_EXIT_T : FIRE_WARP_EXIT_B
+        else
+            wp := exitL ? WARP_EXIT_L : exitR ? WARP_EXIT_R
+                : exitT ? WARP_EXIT_T : WARP_EXIT_B
+        DoReset(WinX + WinW * wp[1] / 100, WinY + WinH * wp[2] / 100)
+        return
+    }
+
+    ; Fire heartbeat: while firing and actively moving the camera, guarantee
+    ; a fresh camera touch at least every FIRE_HEARTBEAT_MS - a fresh touch
+    ; is what un-sticks a game-side freeze, capping it at ~0.7 s.
+    if (fireActive && FIRE_HEARTBEAT_MS && !quiet
+        && A_TickCount - LastResetTick > FIRE_HEARTBEAT_MS
+        && MovedSinceReset > 25) {
+        wp := (VelX < 0) ? FIRE_WARP_EXIT_L : FIRE_WARP_EXIT_R
         DoReset(WinX + WinW * wp[1] / 100, WinY + WinH * wp[2] / 100)
         return
     }
 
     ; --- opportunistic resets: do them when they are invisible --------------
+    ; ...and never inside a key-transition quiet window.
     speed := Sqrt(VelX * VelX + VelY * VelY)
-    softOK := (A_TickCount - LastSoftReset > SOFT_RESET_GAP_MS)
+    softOK := (A_TickCount - LastSoftReset > SOFT_RESET_GAP_MS) && !quiet
 
     ; a) mouse paused entirely: recentre on the NEUTRAL point, which balances
     ;    runway in both horizontal directions for whatever comes next.
     if (!IdleDone && softOK && A_TickCount - LastMoveTick > IDLE_RESET_MS) {
-        ntx := WinX + WinW * WARP_NEUTRAL[1] / 100
-        nty := WinY + WinH * WARP_NEUTRAL[2] / 100
+        np := fireActive ? FIRE_WARP_NEUTRAL : WARP_NEUTRAL
+        ntx := WinX + WinW * np[1] / 100
+        nty := WinY + WinH * np[2] / 100
         if (Abs(mx - ntx) > WinW * 0.06 || Abs(my - nty) > WinH * 0.10) {
             DoReset(ntx, nty)
             LastSoftReset := A_TickCount
@@ -343,8 +505,12 @@ Tick() {
         if (farX || farY) {
             ; Warp to the direction-appropriate exit target - maximum runway
             ; in the direction of travel, same as forced resets.
-            wp := farX ? (VelX < 0 ? WARP_EXIT_L : WARP_EXIT_R)
-                       : (VelY < 0 ? WARP_EXIT_T : WARP_EXIT_B)
+            if fireActive
+                wp := farX ? (VelX < 0 ? FIRE_WARP_EXIT_L : FIRE_WARP_EXIT_R)
+                           : (VelY < 0 ? FIRE_WARP_EXIT_T : FIRE_WARP_EXIT_B)
+            else
+                wp := farX ? (VelX < 0 ? WARP_EXIT_L : WARP_EXIT_R)
+                           : (VelY < 0 ? WARP_EXIT_T : WARP_EXIT_B)
             DoReset(WinX + WinW * wp[1] / 100, WinY + WinH * wp[2] / 100)
             LastSoftReset := A_TickCount
             return
@@ -389,7 +555,10 @@ DoReset(nx, ny) {
         ; 2) Lift, and measure every px the mouse moves while the finger is up.
         SendInput "{LButton up}"
         MouseGetPos(&u0x, &u0y)
-        Sleep RESET_PAUSE_MS
+        pauseMs := (FireHeld || GetKeyState(FIRE_SEND_KEY, "P")
+                 || GetKeyState("RButton", "P"))
+                 ? FIRE_RESET_PAUSE_MS : RESET_PAUSE_MS
+        Sleep pauseMs
         MouseGetPos(&u1x, &u1y)
         CarryX += u1x - u0x
         CarryY += u1y - u0y
@@ -406,6 +575,7 @@ DoReset(nx, ny) {
             }
         }
         LastMX := nx, LastMY := ny
+        LastResetTick := A_TickCount, MovedSinceReset := 0
     } finally {
         Resetting := false
     }
@@ -466,6 +636,7 @@ HideOverlay() {
 ; Safety net: release the button, restore cursor and timer however we exit.
 OnExit((*) => (
     Active ? SendInput("{LButton up}") : 0,
+    FireHeld ? SendInput("{" FIRE_SEND_KEY " up}") : 0,
     RestoreSystemCursor(),
     DllCall("winmm\timeEndPeriod", "uint", 1)
 ))
